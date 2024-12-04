@@ -1,9 +1,6 @@
 name: Resourcepack Zipper
 
-on:
-  push:
-    branches:
-      - secretlife
+on: push
 
 jobs:
   build:
