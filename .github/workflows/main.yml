@@ -3,7 +3,7 @@ name: Resourcepack Zipper
 on:
   push:
     branches:
-      - lastlife
+      - secretlife
 
 jobs:
   build:
