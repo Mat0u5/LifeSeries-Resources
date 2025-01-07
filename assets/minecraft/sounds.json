@@ -23,5 +23,15 @@
         "sounds": [
             "doublelife/soulmate_chosen"
         ]
+    },
+    "secretlife_task": {
+        "sounds": [
+            "secretlife/task"
+        ]
+    },
+    "secretlife_life": {
+        "sounds": [
+            "secretlife/life"
+        ]
     }
 }
