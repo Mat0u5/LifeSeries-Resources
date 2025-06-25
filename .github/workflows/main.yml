@@ -228,12 +228,7 @@ jobs:
                 -d "{
                   \"embeds\": [{
                     \"title\": \"New resourcepack release - ${pack_dir}.zip\",
-                    \"author\": {
-                      \"name\": \"${{ github.event.head_commit.author.name}}\",
-                      \"url\": \"https://github.com/${{ github.event.head_commit.author.username}}\",
-                      \"icon_url\": \"https://github.com/${{ github.event.head_commit.author.username}}.png\"
-                    },
-                    \"description\": \"**Release ID:** ${TAG_NAME}\n**SHA1:** ${CHECKSUM}\",
+                    \"description\": \"**ID:** ${TAG_NAME}\n**SHA1:** ${CHECKSUM}\",
                     \"url\": \"https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${ZIP_NAME}\",
                     \"color\": 3384627
                   }]
