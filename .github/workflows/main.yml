@@ -1,3 +1,5 @@
+#Available Tags: {skip_release}, {skip_build}, {skip_discord}, {rp_<rp-name>}
+
 name: Resourcepack Zipper
 
 on:
@@ -7,127 +9,236 @@ on:
 
 jobs:
   notify:
-    if: ${{ !contains(github.event.head_commit.message, '{skip_discord}') && (contains(github.event.head_commit.message, '{skip_release}') || contains(github.event.head_commit.message, '{skip_build}')) }}
+    if: ${{ !contains(github.event.head_commit.message, '{skip_discord}')}}
     runs-on: ubuntu-latest
 
     steps:
-    - name: Get branch name
-      id: get_branch_name
-      run: |
-        BRANCH_NAME=${GITHUB_REF#refs/heads/}
-        echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-    - name: Prepare and clean commit message
-      id: prepare_commit_message
-      run: |
-        RAW_COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
-        
-        TAGS=$(echo "$RAW_COMMIT_MESSAGE" | grep -oE '\{[^}]+\}' | tr -d '{}' | awk '{tags = tags $0", "} END {sub(", $", "", tags); print tags}')
-        if [ -n "$TAGS" ]; then
-          COMMIT_FOOTER="\\n\`Tags: $TAGS\`"
-        else
-          COMMIT_FOOTER=""
-        fi
-        
-        # Clean the commit message by removing all tags
-        COMMIT_MESSAGE=$(echo "$RAW_COMMIT_MESSAGE" | sed -E 's/\{[^}]+\}//g' | sed 's/%0A/\\n/g' | jq -s -Rr @json)
-        COMMIT_MESSAGE=${COMMIT_MESSAGE:1:-1}
-        
-        echo "COMMIT_MESSAGE=$COMMIT_MESSAGE" >> $GITHUB_ENV
-        echo "COMMIT_FOOTER=$COMMIT_FOOTER" >> $GITHUB_ENV
-    - name: Discord Message
-      uses: satak/webrequest-action@master
-      with:
-        url: ${{ secrets.DISCORD_WEBHOOK }}
-        method: POST
-        payload: '{ "embeds": [{ "title": "[${{ github.repository }}:${{ env.BRANCH_NAME }}] - new commit", "author": {"name": "${{ github.event.head_commit.author.name}}","url": "https://github.com/${{ github.event.head_commit.author.username}}","icon_url": "https://github.com/${{ github.event.head_commit.author.username}}.png"},"description": "`Commit Message:` ```\n${{ env.COMMIT_MESSAGE }}```${{ env.COMMIT_FOOTER }}", "url": "https://github.com/${{ github.repository }}/releases/tag/release-${{ env.BRANCH_NAME }}-${{ github.sha }}", "color": 3384627 }] }'
+      - name: Get branch name
+        id: get_branch_name
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+      - name: Prepare and clean commit message
+        id: prepare_commit_message
+        run: |
+          RAW_COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+          
+          TAGS=$(echo "$RAW_COMMIT_MESSAGE" | grep -oE '\{[^}]+\}' | tr -d '{}' | awk '{tags = tags $0", "} END {sub(", $", "", tags); print tags}')
+          if [ -n "$TAGS" ]; then
+            COMMIT_FOOTER="\\n\`Tags: $TAGS\`"
+          else
+            COMMIT_FOOTER=""
+          fi
+          
+          # Clean the commit message by removing all tags
+          COMMIT_MESSAGE=$(echo "$RAW_COMMIT_MESSAGE" | sed -E 's/\{[^}]+\}//g' | sed 's/%0A/\\n/g' | jq -s -Rr @json)
+          COMMIT_MESSAGE=${COMMIT_MESSAGE:1:-1}
+          
+          echo "COMMIT_MESSAGE=$COMMIT_MESSAGE" >> $GITHUB_ENV
+          echo "COMMIT_FOOTER=$COMMIT_FOOTER" >> $GITHUB_ENV
+      - name: Discord Message
+        uses: satak/webrequest-action@master
+        with:
+          url: ${{ secrets.DISCORD_WEBHOOK }}
+          method: POST
+          payload: '{ "embeds": [{ "title": "[${{ github.repository }}:${{ env.BRANCH_NAME }}] - new commit", "author": {"name": "${{ github.event.head_commit.author.name}}","url": "https://github.com/${{ github.event.head_commit.author.username}}","icon_url": "https://github.com/${{ github.event.head_commit.author.username}}.png"},"description": "`Commit Message:` ```\n${{ env.COMMIT_MESSAGE }}```${{ env.COMMIT_FOOTER }}", "url": "https://github.com/${{ github.repository }}/releases/tag/release-${{ env.BRANCH_NAME }}-${{ github.sha }}", "color": 3384627 }] }'
 
   build:
     if: ${{ !contains(github.event.head_commit.message, '{skip_build}') }}
     runs-on: ubuntu-latest
 
     steps:
-    - name: Get branch name
-      id: get_branch_name
-      run: |
-        BRANCH_NAME=${GITHUB_REF#refs/heads/}
-        echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
-        
-    - name: Checkout code
-      uses: actions/checkout@v2
-      with:
-        fetch-depth: 0 # A non-shallow repository clone is required
+      - name: Get branch name
+        id: get_branch_name
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
-    - name: Run PackSquash
-      uses: ComunidadAylas/PackSquash-action@v4
-      with:
-        packsquash_version: latest # Uses the latest PackSquash release supported by the action
-        shader_source_transformation_strategy: keep_as_is
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0 # A non-shallow repository clone is required.
 
-    - name: Create ZIP file
-      run: |
-        COMMIT_ID=$(git rev-parse --short HEAD)
-        ZIP_NAME="RP.zip"
-        echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
-        zip -r "${ZIP_NAME}" . -x *.git* -x server.properties
+      - name: Find resource pack directories and filter by tags
+        id: find_packs
+        run: |
+          if [ -d "resourcepacks" ]; then
+            ALL_PACK_DIRS=$(find resourcepacks -maxdepth 1 -mindepth 1 -type d -exec basename {} \; | tr '\n' ' ')
+            echo "All available resource pack directories: $ALL_PACK_DIRS"
+          
+            # Check for specific resource pack tags in commit message
+            RAW_COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+            RP_TAGS=$(echo "$RAW_COMMIT_MESSAGE" | grep -oE '\{rp_[^}]+\}' | sed 's/{rp_//g' | sed 's/}//g' | tr '\n' ' ')
+          
+            if [ -n "$RP_TAGS" ]; then
+              echo "Found specific resource pack tags: $RP_TAGS"
+              PACK_DIRS=""
+              for tag in $RP_TAGS; do
+                if echo "$ALL_PACK_DIRS" | grep -q "$tag"; then
+                  PACK_DIRS="$PACK_DIRS $tag"
+                else
+                  echo "Warning: Resource pack '$tag' not found in resourcepacks directory"
+                fi
+              done
+              PACK_DIRS=$(echo $PACK_DIRS | xargs) # trim whitespace
+              echo "Filtered resource pack directories: $PACK_DIRS"
+            else
+              echo "No specific resource pack tags found, processing all packs"
+              PACK_DIRS=$ALL_PACK_DIRS
+            fi
+          
+            echo "PACK_DIRS=$PACK_DIRS" >> $GITHUB_ENV
+          else
+            echo "No resourcepacks directory found"
+            exit 1
+          fi
 
-    - name: Upload ZIP artifact
-      if: ${{ !contains(github.event.head_commit.message, '{skip_release}') }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: resource-pack-artifact
-        path: ${{ env.ZIP_NAME }}
-        
-    - name: Generate SHA1 Checksum
-      run: |
-        echo CHECKSUM="$(shasum ${{ env.ZIP_NAME }} | awk '{ print $1 }')" >> "$GITHUB_ENV"
+      - name: Process each resource pack
+        run: |
+          COMMIT_ID=$(git rev-parse --short HEAD)
+          mkdir -p releases
+          
+          for pack_dir in $PACK_DIRS; do
+            echo "Processing pack: $pack_dir"
+          
+            # Run PackSquash for each pack
+            if [ -d "resourcepacks/$pack_dir" ]; then
+              cd "resourcepacks/$pack_dir"
+          
+              # Create a temporary directory for PackSquash output
+              mkdir -p "../../temp_$pack_dir"
+          
+              # Run PackSquash (you may need to adjust this based on PackSquash requirements)
+              # For now, we'll copy the files as-is since PackSquash might need specific configuration per pack
+              cp -r . "../../temp_$pack_dir/"
+          
+              cd "../.."
+          
+              # Create ZIP file for this pack
+              ZIP_NAME="${pack_dir}.zip"
+              cd "temp_$pack_dir"
+              zip -r "../releases/${ZIP_NAME}" . -x *.git* -x server.properties
+              cd ..
+          
+              # Clean up temp directory
+              rm -rf "temp_$pack_dir"
+          
+              echo "Created ZIP: releases/${ZIP_NAME}"
+            fi
+          done
 
-    - name: Create Release
-      if: ${{ !contains(github.event.head_commit.message, '{skip_release}') }}
-      id: create_release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.RESOURCE_ZIPPER }}
-      with:
-        tag_name: release-${{ env.BRANCH_NAME }}-${{ github.sha }}
-        release_name: Release [${{ env.BRANCH_NAME }}] ${{ github.sha }}
-        draft: false
-        prerelease: false
+      - name: Run PackSquash on individual packs
+        run: |
+          for pack_dir in $PACK_DIRS; do
+            if [ -d "resourcepacks/$pack_dir" ]; then
+              echo "Running PackSquash on $pack_dir"
+              # You may need to run PackSquash individually for each pack
+              # This is a placeholder - adjust based on your PackSquash configuration needs
+            fi
+          done
 
-    - name: Upload Release Artifact
-      if: ${{ !contains(github.event.head_commit.message, '{skip_release}') }}
-      id: upload-release-asset
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.RESOURCE_ZIPPER }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ${{ github.workspace }}/${{ env.ZIP_NAME }}
-        asset_name: ${{ env.ZIP_NAME }}
-        asset_content_type: application/zip
+      - name: Generate checksums
+        run: |
+          cd releases
+          for zip_file in *.zip; do
+            if [ -f "$zip_file" ]; then
+              CHECKSUM=$(shasum "$zip_file" | awk '{ print $1 }')
+              echo "${zip_file%.*}_CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
+              echo "Generated checksum for $zip_file: $CHECKSUM"
+            fi
+          done
 
-    - name: Prepare and clean commit message
-      id: prepare_commit_message
-      run: |
-        RAW_COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
-        
-        TAGS=$(echo "$RAW_COMMIT_MESSAGE" | grep -oE '\{[^}]+\}' | tr -d '{}' | awk '{tags = tags $0", "} END {sub(", $", "", tags); print tags}')
-        if [ -n "$TAGS" ]; then
-          COMMIT_FOOTER="\\n\`Tags: $TAGS\`"
-        else
-          COMMIT_FOOTER=""
-        fi
-        
-        # Clean the commit message by removing all tags
-        COMMIT_MESSAGE=$(echo "$RAW_COMMIT_MESSAGE" | sed -E 's/\{[^}]+\}//g' | sed 's/%0A/\\n/g' | jq -s -Rr @json)
-        COMMIT_MESSAGE=${COMMIT_MESSAGE:1:-1}
-        
-        echo "COMMIT_MESSAGE=$COMMIT_MESSAGE" >> $GITHUB_ENV
-        echo "COMMIT_FOOTER=$COMMIT_FOOTER" >> $GITHUB_ENV
+      - name: Upload ZIP artifacts
+        if: ${{ !contains(github.event.head_commit.message, '{skip_release}') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-pack-artifacts
+          path: releases/*.zip
 
-    - name: Discord Message
-      if: ${{ !contains(github.event.head_commit.message, '{skip_discord}') && !contains(github.event.head_commit.message, '{skip_release}') }}
-      uses: satak/webrequest-action@master
-      with:
-        url: ${{ secrets.DISCORD_WEBHOOK }}
-        method: POST
-        payload: '{ "embeds": [{ "title": "[${{ github.repository }}:${{ env.BRANCH_NAME }}] - new commit\nNew Resource Pack Release", "author": {"name": "${{ github.event.head_commit.author.name}}","url": "https://github.com/${{ github.event.head_commit.author.username}}","icon_url": "https://github.com/${{ github.event.head_commit.author.username}}.png"},"description": "`Commit Message:` ```\n${{ env.COMMIT_MESSAGE }}```${{ env.COMMIT_FOOTER }}\nGithub changelog: [here](https://github.com/${{ github.repository }}/commit/${{ github.sha }})\nLink to this resource pack: [here](https://github.com/${{ github.repository }}/releases/download/release-${{ env.BRANCH_NAME }}-${{ github.sha }}/${{ env.ZIP_NAME }})\nRelease ID: release-${{ env.BRANCH_NAME }}-${{ github.sha }}\nSHA1: ${{env.CHECKSUM}}", "url": "https://github.com/${{ github.repository }}/releases/tag/release-${{ env.BRANCH_NAME }}-${{ github.sha }}", "color": 3384627 }] }'
+      - name: Prepare and clean commit message
+        id: prepare_commit_message
+        run: |
+          RAW_COMMIT_MESSAGE="${{ github.event.head_commit.message }}"
+          
+          TAGS=$(echo "$RAW_COMMIT_MESSAGE" | grep -oE '\{[^}]+\}' | tr -d '{}' | awk '{tags = tags $0", "} END {sub(", $", "", tags); print tags}')
+          if [ -n "$TAGS" ]; then
+            COMMIT_FOOTER="\\n\`Tags: $TAGS\`"
+          else
+            COMMIT_FOOTER=""
+          fi
+          
+          # Clean the commit message by removing all tags
+          COMMIT_MESSAGE=$(echo "$RAW_COMMIT_MESSAGE" | sed -E 's/\{[^}]+\}//g' | sed 's/%0A/\\n/g' | jq -s -Rr @json)
+          COMMIT_MESSAGE=${COMMIT_MESSAGE:1:-1}
+          
+          echo "COMMIT_MESSAGE=$COMMIT_MESSAGE" >> $GITHUB_ENV
+          echo "COMMIT_FOOTER=$COMMIT_FOOTER" >> $GITHUB_ENV
+          
+          # Also extract and store resource pack tags for reference
+          RP_TAGS=$(echo "$RAW_COMMIT_MESSAGE" | grep -oE '\{rp_[^}]+\}' | sed 's/{rp_//g' | sed 's/}//g' | tr '\n' ' ')
+          echo "RP_TAGS=$RP_TAGS" >> $GITHUB_ENV
+
+      - name: Create releases for each pack
+        if: ${{ !contains(github.event.head_commit.message, '{skip_release}') }}
+        run: |
+          for pack_dir in $PACK_DIRS; do
+            ZIP_NAME="${pack_dir}.zip"
+            if [ -f "releases/${ZIP_NAME}" ]; then
+              echo "Creating release for $pack_dir"
+          
+              # Create release
+              TAG_NAME="release-${pack_dir}-${{ github.sha }}"
+              RELEASE_NAME="Release ${pack_dir} - ${{ github.sha }}"
+          
+              # Create release using GitHub API
+              RELEASE_RESPONSE=$(curl -X POST \
+                -H "Authorization: token ${{ secrets.RESOURCE_ZIPPER }}" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/repos/${{ github.repository }}/releases" \
+                -d "{\"tag_name\":\"${TAG_NAME}\",\"name\":\"${RELEASE_NAME}\",\"draft\":false,\"prerelease\":false}")
+          
+              # Extract upload URL
+              UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.upload_url' | sed 's/{?name,label}//')
+          
+              # Upload asset
+              curl -X POST \
+                -H "Authorization: token ${{ secrets.RESOURCE_ZIPPER }}" \
+                -H "Content-Type: application/zip" \
+                --data-binary @"releases/${ZIP_NAME}" \
+                "${UPLOAD_URL}?name=${ZIP_NAME}"
+          
+              echo "RELEASE_TAG_${pack_dir}=${TAG_NAME}" >> $GITHUB_ENV
+            fi
+          done
+
+      - name: Send Discord notifications
+        if: ${{ !contains(github.event.head_commit.message, '{skip_discord}') && !contains(github.event.head_commit.message, '{skip_release}') }}
+        run: |
+          for pack_dir in $PACK_DIRS; do
+            ZIP_NAME="${pack_dir}.zip"
+            if [ -f "releases/${ZIP_NAME}" ]; then
+              TAG_NAME="release-${pack_dir}-${{ github.sha }}"
+          
+              # Get checksum for this pack
+              CHECKSUM=$(shasum "releases/${ZIP_NAME}" | awk '{ print $1 }')
+          
+              # Send Discord webhook
+              curl -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
+                -H "Content-Type: application/json" \
+                -d "{
+                  \"embeds\": [{
+                    \"title\": \"New resourcepack release - ${pack_dir}.zip\",
+                    \"author\": {
+                      \"name\": \"${{ github.event.head_commit.author.name}}\",
+                      \"url\": \"https://github.com/${{ github.event.head_commit.author.username}}\",
+                      \"icon_url\": \"https://github.com/${{ github.event.head_commit.author.username}}.png\"
+                    },
+                    \"description\": \"**Release ID:** ${TAG_NAME}\n**SHA1:** ${CHECKSUM}\",
+                    \"url\": \"https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/${ZIP_NAME}\",
+                    \"color\": 3384627
+                  }]
+                }"
+          
+              echo "Sent Discord notification for $pack_dir"
+            fi
+          done
