@@ -7,7 +7,7 @@ on:
 
 jobs:
   notify:
-    if: ${{ !contains(github.event.head_commit.message, '{skip_discord}') && contains(github.event.head_commit.message, '{skip_release}') }}
+    if: ${{ !contains(github.event.head_commit.message, '{skip_discord}') && (contains(github.event.head_commit.message, '{skip_release}') || contains(github.event.head_commit.message, '{skip_build}')) }}
     runs-on: ubuntu-latest
 
     steps:
@@ -35,7 +35,6 @@ jobs:
         echo "COMMIT_MESSAGE=$COMMIT_MESSAGE" >> $GITHUB_ENV
         echo "COMMIT_FOOTER=$COMMIT_FOOTER" >> $GITHUB_ENV
     - name: Discord Message
-      if: ${{ !contains(github.event.head_commit.message, '{skip_discord}') && contains(github.event.head_commit.message, '{skip_release}') }}
       uses: satak/webrequest-action@master
       with:
         url: ${{ secrets.DISCORD_WEBHOOK }}
