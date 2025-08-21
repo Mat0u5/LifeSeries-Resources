@@ -1,0 +1,37 @@
+{
+    "pastlife_boogeyman_cure": {
+        "sounds": [
+            "boogeyman_cure"
+        ]
+    },
+    "pastlife_boogeyman_fail": {
+        "sounds": [
+            "boogeyman_fail"
+        ]
+    },
+    "pastlife_boogeyman_no": {
+        "sounds": [
+            "boogeyman_no"
+        ]
+    },
+    "pastlife_boogeyman_wait": {
+        "sounds": [
+            "boogeyman_wait"
+        ]
+    },
+    "pastlife_boogeyman_yes": {
+        "sounds": [
+            "boogeyman_yes"
+        ]
+    },
+    "pastlife_didgeridoo": {
+        "sounds": [
+            "didgeridoo"
+        ]
+    },
+    "pastlife_secretsociety_whisper": {
+        "sounds": [
+            "secretsociety_whisper"
+        ]
+    }
+}
